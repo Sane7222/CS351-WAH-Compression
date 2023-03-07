@@ -54,66 +54,62 @@ def compress_index(bitmap_index, output_path, compression_method, word_size):
     output_path = output_path + '_' + str(compression_method) + '_' + str(word_size) # Append proper suffix to output file
 
     grab_size = word_size - 1
-    runs_0 = 0
-    runs_1 = 0
 
     with open(bitmap_index, 'r') as i, open(output_path, 'w') as o:
 
-        block = i.read(grab_size)
-        while len(block) == grab_size:
+        transpose = [''] * 16
 
-            if '\n' in block:
-                block = block.replace('\n', '')
-                block += i.read(1)
+        for line in i.readlines():
+            for j in range(16):
+                transpose[j] += line[j]
 
-            if block.count('0') == len(block): # Run of 0's
-                if runs_1 > 0:
-                    runs_1 = write_runs(o, runs_1, word_size, 1)
-                runs_0 += 1
+        for line in transpose:
+            runs_0 = 0
+            runs_1 = 0
+            s = 0
+            e = grab_size
+            while e < len(line):
+                block = line[s:e]
+                s += grab_size
+                e += grab_size
 
-            elif block.count('1') == len(block): # Runs of 1's
-                if runs_0 > 0:
-                    runs_0 = write_runs(o, runs_0, word_size, 0)
-                runs_1 += 1
+                if block.count('0') == len(block): # Runs of 0's
+                    if runs_1 > 0:
+                        runs_1 = write_runs(o, runs_1, word_size, 1)
+                    runs_0 += 1
 
-            else: # Literal
-                if runs_0 > 0:
-                    runs_0 = write_runs(o, runs_0, word_size, 0)
-                elif runs_1 > 0:
-                    runs_1 = write_runs(o, runs_1, word_size, 1)
-                o.write('0' + block + '\n')
-
-            block = i.read(grab_size)
-
-        if runs_1 > 0: # Flush runs of 1's
-            runs_1 = write_runs(o, runs_1, word_size, 1)
-
-        if len(block) != 0: # Leftover bits
-            if '\n' in block:
-                block = block.replace('\n', '')
-
-                if len(block) == 0:
+                elif block.count('1') == len(block): # Runs of 1's
                     if runs_0 > 0:
                         runs_0 = write_runs(o, runs_0, word_size, 0)
-                    return
+                    runs_1 += 1
 
-            while len(block) != grab_size: # Pad rightmost side with 0's
-                block += '0'
+                else: # Literal
+                    if runs_0 > 0:
+                        runs_0 = write_runs(o, runs_0, word_size, 0)
+                    elif runs_1 > 0:
+                        runs_1 = write_runs(o, runs_1, word_size, 1)
+                    o.write('0' + block)
 
-            if block.count('0') == len(block): # Run of 0's
-                runs_0 = write_runs(o, runs_0 + 1, word_size, 0)
-            else: # Literal
-                o.write('0' + block + '\n')
-        
-        elif runs_0 > 0: # Flush runs of 0's
-            runs_0 = write_runs(o, runs_0, word_size, 0)
+            if runs_1 > 0: # Flush runs of 1's
+                runs_1 = write_runs(o, runs_1, word_size, 1)
+            elif runs_0 > 0: # Flush runs of 0's
+                runs_0 = write_runs(o, runs_0, word_size, 0)
+
+            block = line[s:]
+
+            if len(block) != 0:
+                while len(block) < grab_size:
+                    block += '0'
+                o.write('0' + block)
+            
+            o.write('\n')
 
 def write_runs(o, runs, word_size, type):
     binary = bin(runs)[2:].zfill(word_size - 2) # Convert # of runs to binary and truncate leading 0b, then pad leftmost side with 0's up to word_size - 2
     if type == 0:
-        o.write('10' + binary + '\n')
+        o.write('10' + binary)
     elif type == 1:
-        o.write('11' + binary + '\n')
+        o.write('11' + binary)
 
     return 0
 
