@@ -21,13 +21,13 @@ def create_index(input_file, output_path, sorted):
                     'True\n':  '10\n',
                     'False\n': '01\n'   }
 
-    file, _ = os.path.splitext(os.path.basename(input_file)) # Grab just filename and remove suffix
+    file = os.path.basename(input_file) # Grab just filename
     output_path = os.path.join(output_path, file) # Combine output path and filename
 
     if sorted:
         output_path = output_path + '_sorted' # Add sorted to filename
 
-    with open(input_file, 'r') as i, open(output_path, 'w') as o: # Open io files
+    with open(input_file, 'r') as i, open(output_path, 'w') as o:
 
         lines = i.readlines()
         if sorted:
@@ -49,27 +49,26 @@ def create_index(input_file, output_path, sorted):
 def compress_index(bitmap_index, output_path, compression_method, word_size):
     print('Compressing index from: ' + bitmap_index + '\nTo: ' + output_path + '\nCompression Method: ' + compression_method + '\nWord Size: ' + str(word_size) +'\n')
 
-    file = os.path.basename(bitmap_index) # Grab just filename and remove suffix
+    file = os.path.basename(bitmap_index) # Grab just filename
     output_path = os.path.join(output_path, file) # Combine output path and filename
     output_path = output_path + '_' + str(compression_method) + '_' + str(word_size) # Append proper suffix to output file
 
     grab_size = word_size - 1
+    runs_0 = 0
+    runs_1 = 0
 
     with open(bitmap_index, 'r') as i, open(output_path, 'w') as o:
 
         transpose = [''] * 16
-
-        for line in i.readlines():
+        for line in i.readlines(): # Transpose Bitmap Index
             for j in range(16):
                 transpose[j] += line[j]
 
         for line in transpose:
-            runs_0 = 0
-            runs_1 = 0
             s = 0
             e = grab_size
-            while e < len(line):
-                block = line[s:e]
+            while e < len(line): # While not at the end of the line
+                block = line[s:e] # Grab appropriate segment
                 s += grab_size
                 e += grab_size
 
@@ -95,22 +94,21 @@ def compress_index(bitmap_index, output_path, compression_method, word_size):
             elif runs_0 > 0: # Flush runs of 0's
                 runs_0 = write_runs(o, runs_0, word_size, 0)
 
-            block = line[s:]
+            block = line[s:] # Grab remaining characters
 
             if len(block) != 0:
-                while len(block) < grab_size:
+                while len(block) < grab_size: # Fill and write as literal
                     block += '0'
                 o.write('0' + block)
-            
             o.write('\n')
 
 def write_runs(o, runs, word_size, type):
     binary = bin(runs)[2:].zfill(word_size - 2) # Convert # of runs to binary and truncate leading 0b, then pad leftmost side with 0's up to word_size - 2
+
     if type == 0:
         o.write('10' + binary)
     elif type == 1:
         o.write('11' + binary)
-
     return 0
 
 def compare_files(file_1, file_2):
@@ -119,13 +117,22 @@ def compare_files(file_1, file_2):
 
 if __name__ == '__main__': # Assumes running from a4
     create_index('data/animals.txt', 'myOutput/', False) # Tests if all my bitmap creation works
-    print(compare_files('data/bitmaps/animals', 'myOutput/animals'))
+    print(compare_files('data/bitmaps/animals', 'myOutput/animals.txt'))
 
     create_index('data/animals_small.txt', 'myOutput/', False)
-    print(compare_files('data/bitmaps/animals_small', 'myOutput/animals_small'))
+    print(compare_files('data/bitmaps/animals_small', 'myOutput/animals_small.txt'))
 
     create_index('data/animals.txt', 'myOutput/', True) # Test if I sort lexographically
-    print(compare_files('data/bitmaps/animals_sorted', 'myOutput/animals_sorted'))
+    print(compare_files('data/bitmaps/animals_sorted', 'myOutput/animals.txt_sorted'))
 
-    compress_index('myOutput/animals_small', 'myOutput/', 'WAH', 8)
-    print(compare_files('data/compressed/animals_small_WAH_8', 'myOutput/animals_small_WAH_8'))
+    compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 8)
+    print(compare_files('data/compressed/animals_small_WAH_8', 'myOutput/animals_small.txt_WAH_8'))
+
+    compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 16)
+    print(compare_files('data/compressed/animals_small_WAH_16', 'myOutput/animals_small.txt_WAH_16'))
+
+    compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 32)
+    print(compare_files('data/compressed/animals_small_WAH_32', 'myOutput/animals_small.txt_WAH_32'))
+
+    compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 64)
+    print(compare_files('data/compressed/animals_small_WAH_64', 'myOutput/animals_small.txt_WAH_64'))
