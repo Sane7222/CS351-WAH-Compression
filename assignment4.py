@@ -2,8 +2,6 @@ import os
 import builtins
 
 def create_index(input_file, output_path, sorted):
-    print('Creating index from: ' + input_file + '\nTo: ' + output_path + '\nSorted: ' + str(sorted) + '\n')
-
     index_dict = {  'cat':    '1000', # Key, value dictionary for bitmap index
                     'dog':    '0100',
                     'turtle': '0010',
@@ -47,15 +45,20 @@ def create_index(input_file, output_path, sorted):
             o.write(index_dict[adopted]) # Adopted
 
 def compress_index(bitmap_index, output_path, compression_method, word_size):
-    print('Compressing index from: ' + bitmap_index + '\nTo: ' + output_path + '\nCompression Method: ' + compression_method + '\nWord Size: ' + str(word_size) +'\n')
-
     file = os.path.basename(bitmap_index) # Grab just filename
     output_path = os.path.join(output_path, file) # Combine output path and filename
-    output_path = output_path + '_' + str(compression_method) + '_' + str(word_size) # Append proper suffix to output file
+    grab_size = 0
 
-    grab_size = word_size - 1
+    if compression_method == 'WAH':
+        grab_size = word_size - 1
+        output_path = output_path + '_' + str(compression_method) + '_' + str(word_size) # Append proper suffix to output file
+    elif compression_method == 'BBC':
+        output_path = output_path + '_' + str(compression_method) + '_' + str(8) # Append proper suffix to output file
+        grab_size = 8
+
     runs_0 = 0
     runs_1 = 0
+    literals = 0
 
     with open(bitmap_index, 'r') as i, open(output_path, 'w') as o:
 
@@ -64,45 +67,85 @@ def compress_index(bitmap_index, output_path, compression_method, word_size):
             for j in range(16):
                 transpose[j] += line[j]
 
-        for line in transpose:
-            s = 0
-            e = grab_size
-            while e < len(line): # While not at the end of the line
-                block = line[s:e] # Grab appropriate segment
-                s += grab_size
-                e += grab_size
+        if compression_method == 'WAH':
+            for line in transpose:
+                s = 0
+                e = grab_size
+                while e <= len(line): # While not at the end of the line
+                    block = line[s:e] # Grab appropriate segment
+                    s += grab_size
+                    e += grab_size
 
-                if block.count('0') == len(block): # Runs of 0's
-                    if runs_1 > 0:
-                        runs_1 = write_runs(o, runs_1, word_size, 1)
-                    runs_0 += 1
+                    if block.count('0') == len(block): # Runs of 0's
+                        if runs_1 > 0:
+                            runs_1 = write_runs_WAH(o, runs_1, word_size, 1)
+                        runs_0 += 1
 
-                elif block.count('1') == len(block): # Runs of 1's
-                    if runs_0 > 0:
-                        runs_0 = write_runs(o, runs_0, word_size, 0)
-                    runs_1 += 1
+                    elif block.count('1') == len(block): # Runs of 1's
+                        if runs_0 > 0:
+                            runs_0 = write_runs_WAH(o, runs_0, word_size, 0)
+                        runs_1 += 1
 
-                else: # Literal
-                    if runs_0 > 0:
-                        runs_0 = write_runs(o, runs_0, word_size, 0)
-                    elif runs_1 > 0:
-                        runs_1 = write_runs(o, runs_1, word_size, 1)
+                    else: # Literal
+                        if runs_0 > 0:
+                            runs_0 = write_runs_WAH(o, runs_0, word_size, 0)
+                        elif runs_1 > 0:
+                            runs_1 = write_runs_WAH(o, runs_1, word_size, 1)
+                        o.write('0' + block)
+
+                if runs_1 > 0: # Flush runs of 1's
+                    runs_1 = write_runs_WAH(o, runs_1, word_size, 1)
+                elif runs_0 > 0: # Flush runs of 0's
+                    runs_0 = write_runs_WAH(o, runs_0, word_size, 0)
+
+                block = line[s:] # Grab remaining characters
+
+                if len(block) != 0:
+                    while len(block) < grab_size: # Fill and write as literal
+                        block += '0'
                     o.write('0' + block)
+                o.write('\n')
+        
+        elif compression_method == 'BBC':
+            for line in transpose:
+                lit_lst = []
+                s = 0
+                e = grab_size
+                while e <= len(line):
+                    block = line[s:e] # Grab Byte
+                    s += grab_size
+                    e += grab_size
 
-            if runs_1 > 0: # Flush runs of 1's
-                runs_1 = write_runs(o, runs_1, word_size, 1)
-            elif runs_0 > 0: # Flush runs of 0's
-                runs_0 = write_runs(o, runs_0, word_size, 0)
+                    if block.count('0') == len(block): # Runs of 0's
+                        if runs_0 == 32767 or literals > 0: # End Chunk
+                            runs_0 = literals = write_runs_literals_BBC(o, runs_0, literals, lit_lst)
+                            lit_lst = []
+                        runs_0 += 1
+                        
+                    elif block.count('1') == 1 and literals == 0 and line[s:e].count('0') == len(block): # Dirty Bit | End Chunk
+                        runs_0 = literals = write_dirty_BBC(o, runs_0, block.find('1'))
 
-            block = line[s:] # Grab remaining characters
+                    else: # Literal
+                        literals += 1
+                        lit_lst.append(block)
 
-            if len(block) != 0:
-                while len(block) < grab_size: # Fill and write as literal
-                    block += '0'
-                o.write('0' + block)
-            o.write('\n')
+                        if literals == 15: # End Chunk
+                            runs_0 = literals = write_runs_literals_BBC(o, runs_0, literals, lit_lst)
+                            lit_lst = []
 
-def write_runs(o, runs, word_size, type):
+                if runs_0 > 0 or literals > 0:
+                    runs_0 = literals = write_runs_literals_BBC(o, runs_0, literals, lit_lst)
+
+                block = line[s:] # Grab remaining characters
+
+                if len(block) != 0:
+                    while len(block) < grab_size: # Fill and write as literal
+                        block += '0'
+                    o.write(block)
+
+                o.write('\n')
+
+def write_runs_WAH(o, runs, word_size, type):
     binary = bin(runs)[2:].zfill(word_size - 2) # Convert # of runs to binary and truncate leading 0b, then pad leftmost side with 0's up to word_size - 2
 
     if type == 0:
@@ -110,6 +153,41 @@ def write_runs(o, runs, word_size, type):
     elif type == 1:
         o.write('11' + binary)
     return 0
+
+def write_runs_literals_BBC(o, runs, literals, lst):
+    lit_bin = bin(literals)[2:].zfill(4) # Convert # of literals to binary truncate 0b, then fill up to 4 with 0's
+    
+    if runs > 127: # Need 2 bytes
+        run_bin = bin(runs)[2:].zfill(16)
+        o.write('1110' + str(lit_bin) + str(run_bin))
+    elif runs > 6: # Need 1 byte
+        run_bin = bin(runs)[2:].zfill(8)
+        o.write('1110' + str(lit_bin) + str(run_bin))
+    else:
+        run_bin = bin(runs)[2:].zfill(3)
+        o.write(str(run_bin) + '0' + str(lit_bin))
+
+    if literals != 0:
+        for lit in lst:
+            o.write(lit)
+
+    return 0
+
+def write_dirty_BBC(o, runs, location):
+    loc_bin = bin(location)[2:].zfill(4) # Convert location of dirty bit to binary truncate 0b, then fill up to 4 with 0's
+
+    if runs > 127: # Need 2 bytes
+        run_bin = bin(runs)[2:].zfill(16)
+        o.write('1111' + str(loc_bin) + str(run_bin))
+    elif runs > 6: # Need 1 byte
+        run_bin = bin(runs)[2:].zfill(8)
+        o.write('1111' + str(loc_bin) + str(run_bin))
+    else:
+        run_bin = bin(runs)[2:].zfill(3)
+        o.write(str(run_bin) + '1' + str(loc_bin))
+
+    return 0
+
 
 def compare_files(file_1, file_2):
     with open(file_1, 'r') as f1, open(file_2, 'r') as f2:
@@ -136,3 +214,6 @@ if __name__ == '__main__': # Assumes running from a4
 
     compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 64)
     print(compare_files('data/compressed/animals_small_WAH_64', 'myOutput/animals_small.txt_WAH_64'))
+
+    compress_index('myOutput/animals_small.txt', 'myOutput/', 'BBC', 64) # Test Byte-Aligned Bitmap Compression
+    print(compare_files('data/compressed/animals_small_BBC_8', 'myOutput/animals_small.txt_BBC_8'))
