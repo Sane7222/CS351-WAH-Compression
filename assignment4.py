@@ -45,6 +45,12 @@ def create_index(input_file, output_path, sorted):
             o.write(index_dict[adopted]) # Adopted
 
 def compress_index(bitmap_index, output_path, compression_method, word_size):
+
+    sum_0 = 0 # Sum of everything for analysis
+    sum_1 = 0
+    sum_lit = 0
+    sum_dirty = 0
+
     file = os.path.basename(bitmap_index) # Grab just filename
     output_path = os.path.join(output_path, file) # Combine output path and filename
     grab_size = 0
@@ -71,23 +77,30 @@ def compress_index(bitmap_index, output_path, compression_method, word_size):
             for line in transpose:
                 s = 0
                 e = grab_size
+
                 while e <= len(line): # While not at the end of the line
                     block = line[s:e] # Grab appropriate segment
                     s += grab_size
                     e += grab_size
 
                     if block.count('0') == len(block): # Runs of 0's
-                        if runs_1 > 0:
+                        sum_0 += 1
+
+                        if runs_1 > 0: # Flush runs 1
                             runs_1 = write_runs_WAH(o, runs_1, word_size, 1)
                         runs_0 += 1
 
                     elif block.count('1') == len(block): # Runs of 1's
-                        if runs_0 > 0:
+                        sum_1 += 1
+
+                        if runs_0 > 0: # Flush runs 0
                             runs_0 = write_runs_WAH(o, runs_0, word_size, 0)
                         runs_1 += 1
 
                     else: # Literal
-                        if runs_0 > 0:
+                        sum_lit += 1
+
+                        if runs_0 > 0: # Flush runs 0 or 1
                             runs_0 = write_runs_WAH(o, runs_0, word_size, 0)
                         elif runs_1 > 0:
                             runs_1 = write_runs_WAH(o, runs_1, word_size, 1)
@@ -111,21 +124,28 @@ def compress_index(bitmap_index, output_path, compression_method, word_size):
                 lit_lst = []
                 s = 0
                 e = grab_size
+
                 while e <= len(line):
                     block = line[s:e] # Grab Byte
                     s += grab_size
                     e += grab_size
 
                     if block.count('0') == len(block): # Runs of 0's
+                        sum_0 += 1
+
                         if runs_0 == 32767 or literals > 0: # End Chunk
                             runs_0 = literals = write_runs_literals_BBC(o, runs_0, literals, lit_lst)
                             lit_lst = []
                         runs_0 += 1
                         
                     elif block.count('1') == 1 and literals == 0 and line[s:e].count('0') == len(block): # Dirty Bit | End Chunk
+                        sum_dirty += 1
+
                         runs_0 = literals = write_dirty_BBC(o, runs_0, block.find('1'))
 
                     else: # Literal
+                        sum_lit += 1
+
                         literals += 1
                         lit_lst.append(block)
 
@@ -133,7 +153,7 @@ def compress_index(bitmap_index, output_path, compression_method, word_size):
                             runs_0 = literals = write_runs_literals_BBC(o, runs_0, literals, lit_lst)
                             lit_lst = []
 
-                if runs_0 > 0 or literals > 0:
+                if runs_0 > 0 or literals > 0: # Flush runs or literals
                     runs_0 = literals = write_runs_literals_BBC(o, runs_0, literals, lit_lst)
 
                 block = line[s:] # Grab remaining characters
@@ -144,6 +164,11 @@ def compress_index(bitmap_index, output_path, compression_method, word_size):
                     o.write(block)
 
                 o.write('\n')
+
+    # print('  Runs of 0: ' + str(sum_0))
+    # print('  Runs of 1: ' + str(sum_1))
+    # print('  Literals: ' + str(sum_lit))
+    # print('  Dirty Bits: ' + str(sum_dirty))
 
 def write_runs_WAH(o, runs, word_size, type):
     binary = bin(runs)[2:].zfill(word_size - 2) # Convert # of runs to binary and truncate leading 0b, then pad leftmost side with 0's up to word_size - 2
@@ -160,9 +185,11 @@ def write_runs_literals_BBC(o, runs, literals, lst):
     if runs > 127: # Need 2 bytes
         run_bin = bin(runs)[2:].zfill(16)
         o.write('1110' + str(lit_bin) + str(run_bin))
+
     elif runs > 6: # Need 1 byte
         run_bin = bin(runs)[2:].zfill(8)
         o.write('1110' + str(lit_bin) + str(run_bin))
+
     else:
         run_bin = bin(runs)[2:].zfill(3)
         o.write(str(run_bin) + '0' + str(lit_bin))
@@ -179,41 +206,13 @@ def write_dirty_BBC(o, runs, location):
     if runs > 127: # Need 2 bytes
         run_bin = bin(runs)[2:].zfill(16)
         o.write('1111' + str(loc_bin) + str(run_bin))
+
     elif runs > 6: # Need 1 byte
         run_bin = bin(runs)[2:].zfill(8)
         o.write('1111' + str(loc_bin) + str(run_bin))
+        
     else:
         run_bin = bin(runs)[2:].zfill(3)
         o.write(str(run_bin) + '1' + str(loc_bin))
 
     return 0
-
-
-def compare_files(file_1, file_2):
-    with open(file_1, 'r') as f1, open(file_2, 'r') as f2:
-        return f1.read() == f2.read()
-
-if __name__ == '__main__': # Assumes running from a4
-    create_index('data/animals.txt', 'myOutput/', False) # Tests if all my bitmap creation works
-    print(compare_files('data/bitmaps/animals', 'myOutput/animals.txt'))
-
-    create_index('data/animals_small.txt', 'myOutput/', False)
-    print(compare_files('data/bitmaps/animals_small', 'myOutput/animals_small.txt'))
-
-    create_index('data/animals.txt', 'myOutput/', True) # Test if I sort lexographically
-    print(compare_files('data/bitmaps/animals_sorted', 'myOutput/animals.txt_sorted'))
-
-    compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 8)
-    print(compare_files('data/compressed/animals_small_WAH_8', 'myOutput/animals_small.txt_WAH_8'))
-
-    compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 16)
-    print(compare_files('data/compressed/animals_small_WAH_16', 'myOutput/animals_small.txt_WAH_16'))
-
-    compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 32)
-    print(compare_files('data/compressed/animals_small_WAH_32', 'myOutput/animals_small.txt_WAH_32'))
-
-    compress_index('myOutput/animals_small.txt', 'myOutput/', 'WAH', 64)
-    print(compare_files('data/compressed/animals_small_WAH_64', 'myOutput/animals_small.txt_WAH_64'))
-
-    compress_index('myOutput/animals_small.txt', 'myOutput/', 'BBC', 64) # Test Byte-Aligned Bitmap Compression
-    print(compare_files('data/compressed/animals_small_BBC_8', 'myOutput/animals_small.txt_BBC_8'))
