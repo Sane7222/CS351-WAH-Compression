@@ -24,21 +24,21 @@ How To Run:
 
 Analysis:
 
-    characters    filename                     runs 0    runs 1    literals    dirty bits
+    characters    filename                     runs 0    runs 1    literals    dirty bits    Compression Ratio
 
     1600000       animals.txt                  
-    1361320       animals.txt_BBC_8            59065     0         131915      9020
-    1661728       animals.txt_WAH_16           14025     0         92631       0
-    1649984       animals.txt_WAH_32           1271      0         50329       0
-    1626112       animals.txt_WAH_64           26        0         25366       0
-    1557976       animals.txt_WAH_8            76176     253       152131      0
+    1361320       animals.txt_BBC_8            59065     0         131915      9020          1.175 : 1
+    1661728       animals.txt_WAH_16           14025     0         92631       0             0.963 : 1
+    1649984       animals.txt_WAH_32           1271      0         50329       0             0.969 : 1
+    1626112       animals.txt_WAH_64           26        0         25366       0             0.984 : 1
+    1557976       animals.txt_WAH_8            76176     253       152131      0             1.027 : 1
 
     1600000       animals.txt_sorted
-    339456        animals.txt_sorted_BBC_8     161702    0         38268       30
-    56704         animals.txt_sorted_WAH_16    85811     19151     1694        0
-    115584        animals.txt_sorted_WAH_32    41044     8794      1762        0
-    227200        animals.txt_sorted_WAH_64    19737     3867      1788        0
-    27846         animals.txt_sorted_WAH_8     184923    42073     1564        0
+    339456        animals.txt_sorted_BBC_8     161702    0         38268       30            4.713 : 1
+    56704         animals.txt_sorted_WAH_16    85811     19151     1694        0             28.216 : 1
+    115584        animals.txt_sorted_WAH_32    41044     8794      1762        0             13.843 : 1
+    227200        animals.txt_sorted_WAH_64    19737     3867      1788        0             7.042 : 1
+    27846         animals.txt_sorted_WAH_8     184923    42073     1564        0             57.459 : 1
 
     Why are they different sizes?
 
@@ -54,10 +54,10 @@ Analysis:
         Sorting helped significatly as both compression methods were able to perform more compression due to contiguous runs.
 
         Sorted Compression Ratios:
-            Best: 57.476 : 1        Worst: 4.731 : 1
+            Best: 57.459 : 1        Worst: 4.713 : 1
 
         Unsorted Compression Ratios:
-            Best: 1.176 : 1         Worst: 0.962 : 1
+            Best: 1.175 : 1         Worst: 0.963 : 1
 
     Did different word sizes have different compression ratios? Why?
 
